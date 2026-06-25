@@ -1,16 +1,16 @@
 # Weighted Potential CRPS
 
-Code accompanying the paper **“Towards Fair Comparison of AI and Physics-Based Weather Models for Extreme Events via the Weighted Potential CRPS”**.
+Code accompanying the paper **“Towards Fair Comparisons of AI- and Physics-Based Weather Models for Extreme Events via the Weighted Potential CRPS”**.
 
-The repository contains code to evaluate deterministic weather forecasts with the potential CRPS (PCRPS) and weighted extensions of the PCRPS. The main application is the comparison of deterministic AI weather prediction models and physics-based numerical weather prediction models for extreme weather events.
+The repository contains code to evaluate deterministic weather forecasts with the potential CRPS (PCRPS) and weighted extensions of the PCRPS. The main application is the comparison of AI weather prediction models and physics-based numerical weather prediction models for extreme weather events.
 
 ## Overview
 
 The main scores implemented here are:
 
 * `PCRPS`: potential CRPS.
-* `twPCRPS`: threshold-weighted PCRPS
-* `qwPCRPS`: quantile-weighted PCRPS
+* `twPCRPS`: threshold-weighted PCRPS.
+* `qwPCRPS`: quantile-weighted PCRPS.
 * `PCRPS0`, `twPCRPS0`, and `qwPCRPS0`: unconditional climatology reference scores used to compute skill scores.
 
 ## Repository structure
@@ -74,6 +74,23 @@ python scripts/compute_thresholds.py
 
 The experiments use WeatherBench 2 forecast and observation data together with ERA5-derived threshold datasets. The scripts are written for Zarr datasets and support both local paths and cloud-hosted datasets where applicable.
 
-## Citation
+## Paper
 
-If you use this code, please cite the accompanying paper.
+**Biegert et al. (2026).** Towards Fair Comparisons of AI- and Physics-Based Weather Models for Extreme Events via the Weighted Potential CRPS.<br>
+Preprint available on [arXiv:2606.21170](https://arxiv.org/abs/2606.21170).
+
+### Citation
+
+If you use this code, please cite the accompanying paper:
+
+```bibtex
+@misc{biegert2026faircomparisonsaiphysicsbased,
+  title={Towards Fair Comparisons of AI- and Physics-Based Weather Models for Extreme Events via the Weighted Potential CRPS},
+  author={Tobias Biegert and Sam Allen and Annika Alber and Sebastian Lerch},
+  year={2026},
+  eprint={2606.21170},
+  archivePrefix={arXiv},
+  primaryClass={stat.AP},
+  url={https://arxiv.org/abs/2606.21170},
+}
+```
