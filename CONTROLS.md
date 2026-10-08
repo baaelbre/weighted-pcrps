@@ -73,29 +73,29 @@ If the compiler is missing, install it in this environment with
 
 ### Prepare missing inputs once
 
-Skip the forecast download if the expected local files already exist with all
-requested leads. The new downloader verifies existing metadata and keeps those
-files. It downloads two surface variables and three leads on 1.5 degrees; it
-does not generate forecasts or download the full-resolution archives.
+The downloader uses month/variable jobs with six concurrent jobs by default.
+All selected leads stay together to avoid reading FuXi's same chunk repeatedly.
+The final filenames and evaluator interface are unchanged. It reuses verified
+monthly parts and final files, writes per-job logs, and reports source gaps.
+See [DATA_DOWNLOADS.md](DATA_DOWNLOADS.md) for the combined Biobot launcher.
+Data preparation only needs the existing `probex` environment; no IDR install.
 
 ```bash
-"$PCRPS_PYTHON" -u scripts/prepare_control_data.py \
-    --data-dir "$PCRPS_DATA_DIR" --leads 48 120 240
+/opt/miniconda3/envs/probex/bin/python -u scripts/prepare_control_data.py \
+    --data-dir "$PCRPS_DATA_DIR" --leads 12 48 120 168 240 \
+    --include-hres-fc0 --jobs 6
 
 cd /home/bastiaan/probex
-/opt/miniconda3/envs/probex/bin/python -u download/create_era5_records.py \
-    --start-year 1979 --end-year 2019 --record-tag 1979_2019 \
-    --out-root "$PCRPS_RECORDS_ROOT" --with-scale
+bash bash_scripts/run_biobot_records_2020.sh
 cd /home/bastiaan/weighted-pcrps
 ```
 
-The existing ProbEx record builder reduces remote ERA5; it does not save the full
-historical archive locally. Its new 1979–2019 filenames do not replace the
-1979–2021 records. Sources and exact archive names are listed in
-`scripts/prepare_control_data.py`, from the
+The record wrapper explicitly uses historical ERA5, not the local 2022 truth
+store. It keeps the existing calculation (a joint max/min reduction), writes
+1979–2019 records and scales, and leaves the 1979–2021 files unchanged.
+The public WB2 archive is read over anonymous HTTPS with normal TLS validation.
+Sources are listed in `scripts/prepare_control_data.py` and the
 [WeatherBench 2 data guide](https://weatherbench2.readthedocs.io/en/latest/data-guide.html).
-The four source stores' surface-variable metadata was checked when preparing
-this update; no full weather archive was downloaded here.
 
 ### Pilot: retain the whole year, use 64 cells
 
