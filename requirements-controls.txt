@@ -1,0 +1,13 @@
+# Lightweight environment for the additional controls only. Original Beam jobs
+# keep their existing environment.yml. Python 3.11 and a C++ compiler are needed.
+setuptools==80.9.0
+numpy>=1.26,<3
+pandas>=2.2,<3
+scipy>=1.13
+xarray>=2025.4
+dask[array]>=2024.4
+zarr>=2.17,<4
+netCDF4>=1.7
+gcsfs>=2024.4
+matplotlib>=3.8
+isodisreg @ git+https://github.com/evwalz/isodisreg.git@c293eb3a126f200bf4894ecbab6157596c2a395e

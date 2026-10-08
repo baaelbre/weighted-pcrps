@@ -1,5 +1,7 @@
 # Weighted Potential CRPS
 
+Paired EasyUQ controls for HRES, GraphCast, Pangu and FuXi: see [CONTROLS.md](CONTROLS.md) for the design, outputs and Biobot commands.
+
 Code accompanying the paper **“Towards Fair Comparisons of AI- and Physics-Based Weather Models for Extreme Events via the Weighted Potential CRPS”**.
 
 The repository contains code to evaluate deterministic weather forecasts with the potential CRPS (PCRPS) and weighted extensions of the PCRPS. The main application is the comparison of AI weather prediction models and physics-based numerical weather prediction models for extreme weather events.
