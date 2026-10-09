@@ -20,6 +20,8 @@ on calendar month. It does not fit a separate sparse IDR to realized records.
 
 All use common valid dates across models and requested leads, one reference,
 fixed historical records/scales, common land mask and cosine latitude weights.
+All inputs use the same latitude domain, **-60 < latitude <= 90**. An extra
+boundary row at exactly 60S is removed before the exact grid comparison.
 The evaluator rejects grid mismatch and missing values rather than silently
 changing cases. It uses precomputed WB2 wind speed, not speed from averaged
 vectors. Cells with nonpositive monthly scales are excluded consistently.
@@ -63,49 +65,34 @@ conda create -n probex-easyuq --clone probex
 conda activate probex-easyuq
 python -m pip install -r requirements-controls.txt
 export PCRPS_PYTHON=/opt/miniconda3/envs/probex-easyuq/bin/python
-export PCRPS_DATA_DIR=/data/nvme1/bastiaan/probex-data/easyuq_2020
+export PCRPS_DATA_DIR=/data/nvme1/bastiaan/probex-data
 export PCRPS_RECORDS_ROOT=/data/nvme1/bastiaan/probex-data/era5_records
-export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 ```
 
 If the compiler is missing, install it in this environment with
 `conda install -c conda-forge cxx-compiler`, then retry pip. No GPU is needed.
 
-### Prepare missing inputs once
+### Inputs are already downloaded
 
-The downloader uses month/variable jobs with six concurrent jobs by default.
-All selected leads stay together to avoid reading FuXi's same chunk repeatedly.
-The final filenames and evaluator interface are unchanged. It reuses verified
-monthly parts and final files, writes per-job logs, and reports source gaps.
-See [DATA_DOWNLOADS.md](DATA_DOWNLOADS.md) for the combined Biobot launcher.
-Data preparation only needs the existing `probex` environment; no IDR install.
+The controls now read the files produced by ProbEx directly: truth in `era5/`,
+model data in `forecasts/<model>/`, and records/scales in `era5_records/`.
+No copying or second download is needed. See [DATA_DOWNLOADS.md](DATA_DOWNLOADS.md)
+for the exact filenames. The old standalone `prepare_control_data.py` writes a
+legacy flat layout; do not run it for this shared-directory workflow.
 
-```bash
-/opt/miniconda3/envs/probex/bin/python -u scripts/prepare_control_data.py \
-    --data-dir "$PCRPS_DATA_DIR" --leads 12 48 120 168 240 \
-    --include-hres-fc0 --jobs 6
-
-cd /home/bastiaan/probex
-bash bash_scripts/run_biobot_records_2020.sh
-cd /home/bastiaan/weighted-pcrps
-```
-
-The record wrapper explicitly uses historical ERA5, not the local 2022 truth
-store. It keeps the existing calculation (a joint max/min reduction), writes
-1979–2019 records and scales, and leaves the 1979–2021 files unchanged.
-The public WB2 archive is read over anonymous HTTPS with normal TLS validation.
-Sources are listed in `scripts/prepare_control_data.py` and the
-[WeatherBench 2 data guide](https://weatherbench2.readthedocs.io/en/latest/data-guide.html).
-
-### Pilot: retain the whole year, use 64 cells
+### Pilot: retain the whole year, use 16 cells
 
 Shortening the year changes the IDR fit. Instead the pilot uses geographically
 spread land cells, while keeping all common dates for fitting and evaluation.
+Use the production lead list, too, so the time intersection is unchanged.
+The pilot checks execution and timing, not model rankings; rare-event bins can
+be empty with so few cells.
 
 ```bash
 "$PCRPS_PYTHON" -u -m pcrps.compute_controls \
     --data-dir "$PCRPS_DATA_DIR" --records-root "$PCRPS_RECORDS_ROOT" \
-    --var t2m --leads 48 --pilot-cells 64 --output results/controls_pilot
+    --var t2m --leads 48 120 240 --pilot-cells 16 --output results/controls_pilot
 "$PCRPS_PYTHON" scripts/plot_controls.py \
     --results results/controls_pilot --output figures/controls_pilot
 ```
@@ -128,7 +115,8 @@ and depths 0/0.5/1/2. Heat and cold share each temperature fit. Four CPU process
 are used; do not launch many copies. Each completed variable/lead is saved
 separately. If interrupted, rerun the same command; existing summaries are
 replaced. Keep the full requested lead list so the common valid-time intersection
-stays identical. A pilot with one lead may have additional valid dates.
+stays identical. The expensive work is fitting and scoring at every land cell;
+the earlier download speed is not an estimate of this runtime.
 
 ### Optional held-out control on identical evaluation dates
 
@@ -154,9 +142,8 @@ plotter. The NetCDF retains the exact calibration/verification timestamps,
 selected cells and calibration maxima. No fair correction, bootstrap or
 never-record baseline is introduced.
 
-For an additional common-reference sensitivity, prepare HRES-fc0 with
-`scripts/prepare_control_data.py --data-dir "$PCRPS_DATA_DIR" --include-hres-fc0`,
-then run **every model** with `--truth HRES_fc0` into a separate output directory.
+For an additional common-reference sensitivity, HRES-fc0 is already downloaded.
+Run **every model** with `--truth HRES_fc0` into a separate output directory.
 ERA5 records stay fixed. Check the stored verification dates before comparing
 references; the two archives may have different coverage.
 
@@ -165,7 +152,8 @@ references; the two archives may have different coverage.
 `results/controls/` contains per-variable/lead NetCDF and CSV summaries. Plots go
 to `figures/controls/`; `paired_differences.csv` gives like-for-like model and
 within-model contrasts, including the record/nonrecord contributions. Negative
-differences favour the first model/representation. Raw scores at deeper thresholds
+differences favour the first model/representation for CRPS, rtwCRPS, Brier and
+squared error. For signed bias, compare distance from zero. Raw scores at deeper thresholds
 usually decrease because events get rarer; that alone is not increasing skill.
 
 Before delivery, exact scores were checked against the brute-force weighted

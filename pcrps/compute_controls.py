@@ -1,4 +1,4 @@
-"""Paired EasyUQ controls using existing prepared WeatherBench files.
+"""Paired EasyUQ controls using the shared ProbEx data directory.
 
 Default: reproduce the in-sample potential-information setting. --mode holdout
 fits only dates up to --calibration-end and requires later evaluation dates.
@@ -16,6 +16,7 @@ import xarray as xr
 from pcrps.control_scores import REPRESENTATIONS, SCORES, score_cell
 
 VARIABLES = {"t2m": "2m_temperature", "w10": "10m_wind_speed"}
+MODEL_DIRS = {"hres": "HRES", "graphcast": "GraphCast", "pangu": "Pangu", "fuxi": "FuXi"}
 
 
 def check_units(data, variable, required=False):
@@ -32,7 +33,9 @@ def normalize(data):
         data = data.assign_coords({dim: np.round(data[dim].values.astype(float), 6)}).sortby(dim)
         if not np.isfinite(data[dim]).all() or len(np.unique(data[dim])) != data.sizes[dim]:
             raise ValueError(f"Invalid {dim} coordinates.")
-    return data.sel(latitude=slice(-60, 90))
+    # Same boundary for forecasts, truth, records/scales and land-sea mask.
+    # Rounding above removes coordinate noise; this does not interpolate.
+    return data.sel(latitude=data.latitude[(data.latitude > -60) & (data.latitude <= 90)])
 
 
 def field_at_lead(ds, var, lead):
@@ -48,7 +51,8 @@ def field_at_lead(ds, var, lead):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-dir", type=Path, default=os.environ.get("PCRPS_DATA_DIR", "data"))
+    parser.add_argument("--data-dir", type=Path, default=os.environ.get("PCRPS_DATA_DIR", "data"),
+                        help="Shared ProbEx root containing era5/, forecasts/ and era5_records/.")
     parser.add_argument("--records-root", type=Path, required=True, help="ProbEx record + scale NetCDF files for the historical baseline.")
     parser.add_argument("--output", type=Path, default=Path("results/controls"))
     parser.add_argument("--models", nargs="+", choices=["hres", "graphcast", "pangu", "fuxi"], default=["hres", "graphcast", "pangu", "fuxi"])
@@ -76,12 +80,20 @@ def main():
     args.leads, args.depths = sorted(set(args.leads)), sorted(set(args.depths))
     args.output.mkdir(parents=True, exist_ok=True)
     variable = VARIABLES[args.var]
-    truth_file = args.data_dir / ("era5_240x121_eval_times.zarr" if args.truth == "ERA5" else "ifs_analysis_240x121_eval_times.zarr")
+    truth_folder = "era5" if args.truth == "ERA5" else "forecasts/HRES_fc0"
+    truth_file = args.data_dir / truth_folder / f"{args.truth}_{args.year}_0012_no_Antarctic_1p50.zarr"
+    forecast_files = {model: args.data_dir / "forecasts" / MODEL_DIRS[model] / f"{model}_240x121_{args.year}.zarr"
+                      for model in args.models}
+    for path in [truth_file, *forecast_files.values()]:
+        if not path.is_dir():
+            raise FileNotFoundError(f"Missing {path}. --data-dir must be the shared ProbEx data root.")
+    print(f"Data: {args.data_dir}; truth: {args.truth}; records: {args.record_tag}", flush=True)
+    print(f"Models: {args.models}; leads: {args.leads}; mode: {args.mode}", flush=True)
     truth_ds = xr.open_zarr(truth_file, chunks={})
     truth = normalize(truth_ds[variable]).sel(time=slice(f"{args.year}-01-01", f"{args.year}-12-31T23:59:59"))
     check_units(truth, args.var)
     truth = truth.where(truth.time.dt.hour.isin([0, 12]), drop=True)
-    sources = {model: xr.open_zarr(args.data_dir / f"{model}_240x121_{args.year}.zarr", chunks={}) for model in args.models}
+    sources = {model: xr.open_zarr(path, chunks={}) for model, path in forecast_files.items()}
     times = truth.time.values
     for ds in [truth, *sources.values()]:
         if len(np.unique(ds.time)) != ds.sizes["time"] or np.isnat(ds.time).any():
@@ -98,6 +110,8 @@ def main():
     if not len(times):
         raise ValueError("No common valid times.")
     truth = truth.sel(time=times)
+    print(f"Common grid: {truth.sizes['latitude']} x {truth.sizes['longitude']}; -60 < latitude <= 90.", flush=True)
+    print(f"Common valid times across all models/leads: {len(times)} ({times[0]} to {times[-1]}).", flush=True)
     evaluate = np.ones(len(times), dtype=bool)
     if args.eval_start:
         evaluate &= times >= np.datetime64(args.eval_start)
@@ -211,6 +225,8 @@ def main():
         ds["observed_probability"] = ds.record_weight / all_weight
         ds.attrs = dict(mode=args.mode, year=args.year, variable=args.var, record_tag=args.record_tag,
                         truth=args.truth, truth_file=str(truth_file.resolve()), surface=args.surface,
+                        data_directory=str(args.data_dir.resolve()), latitude_domain="-60 < latitude <= 90",
+                        forecast_files="; ".join(f"{m}: {p.resolve()}" for m, p in forecast_files.items()),
                         reference_fingerprint=reference.hexdigest(), valid_count=int(evaluate.sum()*len(cells)),
                         valid_weight=float(all_weight), calibration_time_count=int(fit.sum()), eligible_cell_count=eligible_cell_count,
                         selected_cell_count=len(cells), pilot="true" if args.pilot_cells else "false",

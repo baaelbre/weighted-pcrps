@@ -6,7 +6,10 @@ Code accompanying the paper **“Towards Fair Comparisons of AI- and Physics-Bas
 
 The repository contains code to evaluate deterministic weather forecasts with the potential CRPS (PCRPS) and weighted extensions of the PCRPS. The main application is the comparison of AI weather prediction models and physics-based numerical weather prediction models for extreme weather events.
 
-Parallel, resumable 2020 data downloads: see [DATA_DOWNLOADS.md](DATA_DOWNLOADS.md).
+The controls read the existing shared ProbEx data folders; see
+[DATA_DOWNLOADS.md](DATA_DOWNLOADS.md) for the paths. Follow [CONTROLS.md](CONTROLS.md)
+for their lightweight environment and Biobot commands. The setup and runners
+below remain those of the original paper.
 
 ## Overview
 
