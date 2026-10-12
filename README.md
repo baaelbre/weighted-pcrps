@@ -2,6 +2,10 @@
 
 Paired EasyUQ controls for HRES, GraphCast, Pangu and FuXi: see [CONTROLS.md](CONTROLS.md) for the design, outputs and Biobot commands.
 
+Raw forecast comparison with independently switched ERA5/HRES-fc0 event selection
+and verification: see [REFERENCE_COMPARISON.md](REFERENCE_COMPARISON.md). This
+addition uses the existing 2020 downloads and requires no EasyUQ refitting.
+
 Code accompanying the paper **“Towards Fair Comparisons of AI- and Physics-Based Weather Models for Extreme Events via the Weighted Potential CRPS”**.
 
 The repository contains code to evaluate deterministic weather forecasts with the potential CRPS (PCRPS) and weighted extensions of the PCRPS. The main application is the comparison of AI weather prediction models and physics-based numerical weather prediction models for extreme weather events.
@@ -26,12 +30,14 @@ The main scores implemented here are:
 pcrps/
   compute_pcrps.py       Compute PCRPS, twPCRPS, and qwPCRPS
   compute_pcrps0.py      Compute climatological reference scores
+  compute_reference_comparison.py  Raw forecasts: four event/reference combinations
   pcrps_helper.py        Score calculation utilities
   test_scores.py         Block permutation tests
 
 scripts/
   compute_thresholds.py  Build ERA5 quantile and record thresholds
   evaluate_ensemble.py   Evaluate ensemble forecasts
+  plot_reference_comparison.py  Bias/RMSE versus margin and depth; counts; all cases
 
 jobs/
   run_*.sh               Shell scripts used for the paper experiments

@@ -13,7 +13,6 @@ import time
 import dask
 import numpy as np
 import xarray as xr
-from pcrps.control_scores import REPRESENTATIONS, SCORES, score_cell
 
 VARIABLES = {"t2m": "2m_temperature", "w10": "10m_wind_speed"}
 MODEL_DIRS = {"hres": "HRES", "graphcast": "GraphCast", "pangu": "Pangu", "fuxi": "FuXi"}
@@ -50,6 +49,10 @@ def field_at_lead(ds, var, lead):
 
 
 def main():
+    # Only the EasyUQ experiment needs IDR; the raw reference comparison reuses
+    # the coordinate and lead-time readers above without importing that solver.
+    from pcrps.control_scores import REPRESENTATIONS, SCORES, score_cell
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=os.environ.get("PCRPS_DATA_DIR", "data"),
                         help="Shared ProbEx root containing era5/, forecasts/ and era5_records/.")
