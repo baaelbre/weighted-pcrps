@@ -2,6 +2,7 @@
 
 E selects the cases; T supplies the observations used in forecast - observation.
 All four E/T combinations use the same models, dates, grid and historical R.
+--diagnostics occurrence instead adds counts, PR, correlations and joint-forecast controls.
 No EasyUQ fitting, inference, resampling or forecast downloads take place here.
 """
 import argparse
@@ -18,6 +19,7 @@ import numpy as np
 import xarray as xr
 
 from pcrps.compute_controls import VARIABLES, MODEL_DIRS, check_units, normalize, field_at_lead
+from pcrps.reference_occurrence import monthly_forecast_sd, occurrence_diagnostics
 
 
 def main():
@@ -34,6 +36,10 @@ def main():
                         help="Expected sampling of the historical record file, not the verification hours.")
     parser.add_argument("--leads", nargs="+", type=int, default=[48, 120, 240])
     parser.add_argument("--axes", nargs="+", choices=["margin", "depth"], default=["margin", "depth"])
+    parser.add_argument("--diagnostics", nargs="+", choices=["conditional", "occurrence"], default=["conditional"],
+                        help="Keep conditional for the existing results; occurrence adds PR, counts, correlations and joint-forecast controls.")
+    parser.add_argument("--gains", nargs="+", type=float, default=np.linspace(-1.5, 1.5, 61).round(8).tolist(),
+                        help="Forecast-SD shifts for the occurrence PR curves; include zero for raw forecasts.")
     parser.add_argument("--margins", nargs="+", type=float, default=[0, 0.5, 1, 2, 3, 4, 5, 6],
                         help="Cumulative physical exceedance thresholds, in K or m/s.")
     parser.add_argument("--depths", nargs="+", type=float, default=[0, 0.5, 1, 2])
@@ -46,6 +52,7 @@ def main():
     args.leads = sorted(set(args.leads))
     args.margins, args.depths = sorted(set(args.margins)), sorted(set(args.depths))
     args.record_hours = sorted(set(args.record_hours))
+    args.gains = sorted(set(args.gains))
     try:
         first_year, last_year = map(int, args.record_tag.split("_"))
     except ValueError:
@@ -60,6 +67,8 @@ def main():
         parser.error("Historical record hours must be drawn from 0, 6, 12, 18.")
     if args.pilot_cells is not None and args.pilot_cells < 1:
         parser.error("--pilot-cells must be positive.")
+    if any(not np.isfinite(g) for g in args.gains) or 0 not in args.gains:
+        parser.error("--gains must be finite and include zero.")
     args.output.mkdir(parents=True, exist_ok=True)
 
     variable = VARIABLES[args.var]
@@ -73,7 +82,11 @@ def main():
     print(f"Raw forecast reference comparison: {args.var}, {args.year}, {args.surface}", flush=True)
     print(f"Data: {args.data_dir}; records: {args.record_tag}, hours {args.record_hours}", flush=True)
     print(f"Models: {args.models}; leads: {args.leads}; axes: {args.axes}", flush=True)
-    print("Four combinations: E=ERA5/HRES_fc0 selects events; T=ERA5/HRES_fc0 verifies them.", flush=True)
+    print(f"Diagnostics: {args.diagnostics}", flush=True)
+    if "conditional" in args.diagnostics:
+        print("Four combinations: E=ERA5/HRES_fc0 selects events; T=ERA5/HRES_fc0 verifies them.", flush=True)
+    if "occurrence" in args.diagnostics:
+        print("Occurrence: common binary targets from each reference; all eligible cases; gain=0 is the raw forecast.", flush=True)
 
     with ExitStack() as stack:
         # 1. Open the six LOCAL stores and put all fields on the same coordinates.
@@ -204,15 +217,51 @@ def main():
                 raise ValueError("Nonfinite forecast on the matched cases; no model-specific skipping is allowed.")
             # Physical error retains its sign: cold underprediction of intensity
             # appears as a POSITIVE temperature error (forecast too warm).
-            errors = forecasts[None, :, :, :] - observations[:, None, :, :]
-            squared_errors = errors**2
-            all_bias = (errors * weights).sum(axis=(-2, -1)) / all_weight
-            all_mse = (squared_errors * weights).sum(axis=(-2, -1)) / all_weight
+            if "conditional" in args.diagnostics:
+                errors = forecasts[None, :, :, :] - observations[:, None, :, :]
+                squared_errors = errors**2
+                all_bias = (errors * weights).sum(axis=(-2, -1)) / all_weight
+                all_mse = (squared_errors * weights).sum(axis=(-2, -1)) / all_weight
+            forecast_sd = monthly_forecast_sd(forecasts, months) if "occurrence" in args.diagnostics else None
             for event, (_, sign) in events.items():
                 history = histories[event].isel(index)
                 record = history.record.transpose("month", "cell").values[months]
                 scale = history.scale.transpose("month", "cell").values[months] if "depth" in args.axes else None
-                for axis in args.axes:
+                metadata = dict(
+                    year=args.year, variable=args.var, event=event, leadtime_hours=lead,
+                    surface=args.surface, record_tag=args.record_tag,
+                    record_hours_utc=",".join(map(str, args.record_hours)), verification_hours_utc="0,12",
+                    case_fingerprint=case_fingerprint, record_fingerprint=record_fingerprint.hexdigest(),
+                    common_leads_hours=",".join(map(str, args.leads)), model_names=",".join(args.models),
+                    valid_time_count=len(times), selected_cell_count=len(cells), eligible_cell_count=eligible_count,
+                    all_count=int(len(times)*len(cells)), all_weight=all_weight,
+                    pilot="true" if args.pilot_cells else "false", latitude_domain="-60 < latitude <= 90",
+                    records_file=history_paths[event], records_metadata=json.dumps(histories[event].attrs, default=str),
+                    reference_files=json.dumps({k: str(v.resolve()) for k, v in reference_paths.items()}),
+                    forecast_files=json.dumps({k: str(v.resolve()) for k, v in forecast_paths.items()}),
+                    source_urls=json.dumps({k: str(v.attrs.get("source_url", "not recorded")) for k, v in sources.items()}),
+                )
+                if "occurrence" in args.diagnostics:
+                    print(f"  {event}: occurrence and joint-forecast diagnostics", flush=True)
+                    occurrence = occurrence_diagnostics(forecasts, observations, record, forecast_sd,
+                                                        months, weights, args.models, references, sign, args.gains)
+                    occurrence.attrs.update(metadata)
+                    occurrence = occurrence.assign_coords(verification_time=times, cell=cells, forecast_month=np.arange(1, 13))
+                    occurrence["cell_latitude"] = ("cell", lsm.latitude.values[lat])
+                    occurrence["cell_longitude"] = ("cell", lsm.longitude.values[lon])
+                    occurrence["cell_weight"] = ("cell", weights)
+                    occurrence["monthly_forecast_sd"] = (["model", "forecast_month", "cell"], forecast_sd)
+                    occurrence.monthly_forecast_sd.attrs["units"] = units
+                    for metric in ["bias", "rmse", "mse"]:
+                        name = f"joint_forecast_{metric}"
+                        if name in occurrence:
+                            occurrence[name].attrs["units"] = f"({units})^2" if metric == "mse" else units
+                    stem = f"occurrence_{event}_{args.year}_{args.record_tag}_{args.surface}_{lead:03d}h"
+                    occurrence.to_netcdf(args.output / f"{stem}.nc.partial", engine="netcdf4",
+                                         encoding={"monthly_forecast_sd": {"zlib": True, "complevel": 1}})
+                    os.replace(args.output / f"{stem}.nc.partial", args.output / f"{stem}.nc")
+                    print(f"  Saved {stem}; observed counts {occurrence.observed_count.values.tolist()}", flush=True)
+                for axis in args.axes if "conditional" in args.diagnostics else []:
                     levels = np.asarray(args.margins if axis == "margin" else args.depths)
                     shape = (2, 2, len(args.models), len(levels))
                     bias, mse = np.full(shape, np.nan), np.full(shape, np.nan)
@@ -251,19 +300,7 @@ def main():
                         if not np.allclose(delta.sel(truth="ERA5"), delta.sel(truth="HRES_fc0"),
                                            atol=1e-9, rtol=1e-9, equal_nan=True):
                             raise ValueError("Matched-case signed-bias identity failed.")
-                    out.attrs = dict(
-                        year=args.year, variable=args.var, event=event, threshold_axis=axis,
-                        leadtime_hours=lead, surface=args.surface, record_tag=args.record_tag,
-                        record_hours_utc=",".join(map(str, args.record_hours)), verification_hours_utc="0,12",
-                        case_fingerprint=case_fingerprint, record_fingerprint=record_fingerprint.hexdigest(),
-                        common_leads_hours=",".join(map(str, args.leads)), model_names=",".join(args.models),
-                        valid_time_count=len(times), selected_cell_count=len(cells), eligible_cell_count=eligible_count,
-                        all_count=int(len(times)*len(cells)), all_weight=all_weight,
-                        pilot="true" if args.pilot_cells else "false", latitude_domain="-60 < latitude <= 90",
-                        records_file=history_paths[event], records_metadata=json.dumps(histories[event].attrs, default=str),
-                        reference_files=json.dumps({k: str(v.resolve()) for k, v in reference_paths.items()}),
-                        forecast_files=json.dumps({k: str(v.resolve()) for k, v in forecast_paths.items()}),
-                        source_urls=json.dumps({k: str(v.attrs.get("source_url", "not recorded")) for k, v in sources.items()}),
+                    out.attrs = dict(metadata, threshold_axis=axis,
                         event_definition="sign*(E-R)>level for margin; sign*(E-R)>level*s for depth; sign=-1 for cold",
                         bias_definition="forecast minus T, in physical units; positive cold bias means too warm",
                         aggregation="Cosine-latitude weighted mean of errors/squared errors; RMSE=sqrt(weighted MSE)",

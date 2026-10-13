@@ -3,6 +3,9 @@
 This experiment holds the forecast fields fixed and evaluates all four models
 in every cell of this table. It adds to the EasyUQ work without fitting IDR again.
 
+The remaining occurrence and jointly forecast record experiments are now available
+in [REFERENCE_OCCURRENCE.md](REFERENCE_OCCURRENCE.md), with their own runner.
+
 | Event selection E | Verification T = ERA5 | Verification T = HRES-fc0 |
 | --- | --- | --- |
 | ERA5 | Common ERA5 comparison | Same ERA5 events, changed verification |

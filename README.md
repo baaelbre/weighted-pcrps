@@ -6,6 +6,11 @@ Raw forecast comparison with independently switched ERA5/HRES-fc0 event selectio
 and verification: see [REFERENCE_COMPARISON.md](REFERENCE_COMPARISON.md). This
 addition uses the existing 2020 downloads and requires no EasyUQ refitting.
 
+Remaining 2020 diagnostics (record counts, confusion matrices, precision–recall,
+binary correlations and jointly forecast records): see
+[REFERENCE_OCCURRENCE.md](REFERENCE_OCCURRENCE.md). Run
+`bash jobs/run_reference_occurrence.sh` after setting the Biobot environment.
+
 Code accompanying the paper **“Towards Fair Comparisons of AI- and Physics-Based Weather Models for Extreme Events via the Weighted Potential CRPS”**.
 
 The repository contains code to evaluate deterministic weather forecasts with the potential CRPS (PCRPS) and weighted extensions of the PCRPS. The main application is the comparison of AI weather prediction models and physics-based numerical weather prediction models for extreme weather events.
@@ -31,6 +36,7 @@ pcrps/
   compute_pcrps.py       Compute PCRPS, twPCRPS, and qwPCRPS
   compute_pcrps0.py      Compute climatological reference scores
   compute_reference_comparison.py  Raw forecasts: four event/reference combinations
+  reference_occurrence.py  Record occurrence and jointly forecast record diagnostics
   pcrps_helper.py        Score calculation utilities
   test_scores.py         Block permutation tests
 
@@ -38,6 +44,7 @@ scripts/
   compute_thresholds.py  Build ERA5 quantile and record thresholds
   evaluate_ensemble.py   Evaluate ensemble forecasts
   plot_reference_comparison.py  Bias/RMSE versus margin and depth; counts; all cases
+  plot_reference_occurrence.py  PR, confusion, correlations, counts and joint forecasts
 
 jobs/
   run_*.sh               Shell scripts used for the paper experiments
